@@ -31,7 +31,7 @@ const distance = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
 function snapshot(room) {
   return {
     code: room.code, status: room.status, level: room.level,
-    keyFound: room.keyFound, hostId: room.hostId,
+    keyFound: room.keyFound, hostId: room.hostId, activatedButtons: [...room.activatedButtons],
     players: [...room.players.values()].map(p => ({
       id:p.id, name:p.name, color:p.color, x:p.x, y:p.y, alive:p.alive
     }))
@@ -74,6 +74,7 @@ function beginLevel(room, nextLevel) {
   room.level = nextLevel;
   room.keyFound = false;
   room.buttonHold = 0;
+  room.activatedButtons = new Set();
   resetPositions(room);
   io.to(room.code).emit("level", room.level);
   sendState(room);
@@ -88,10 +89,11 @@ function tryComplete(room, dt) {
     room.keyFound = true;
     io.to(room.code).emit("notice", "🔑 Chave encontrada! Agora juntem a equipe na saída.");
   }
-  const buttonsReady = config.buttons.every(([x,y]) =>
-    players.some(p => distance(p.x + 15, p.y + 38, x, y) < 58)
-  );
-  const teamReady = players.length >= 2 && players.every(p =>
+  config.buttons.forEach(([x,y], index) => {
+    if (players.some(p => distance(p.x + 15, p.y + 38, x, y) < 58)) room.activatedButtons.add(index);
+  });
+  const buttonsReady = config.buttons.every((_button, index) => room.activatedButtons.has(index));
+  const teamReady = players.length >= 1 && players.every(p =>
     distance(p.x + 15, p.y + 19, config.door[0], config.door[1]) < 155
   );
   if (room.keyFound && buttonsReady && teamReady) room.buttonHold += dt;
@@ -114,7 +116,7 @@ io.on("connection", socket => {
     removePlayer(socket);
     let code = makeCode();
     while (rooms.has(code)) code = makeCode();
-    const room = { code, status:"waiting", level:0, keyFound:false, buttonHold:0, hostId:null, players:new Map() };
+    const room = { code, status:"waiting", level:0, keyFound:false, buttonHold:0, activatedButtons:new Set(), hostId:null, players:new Map() };
     rooms.set(code, room);
     socket.join(code);
     socket.data.room = code;
@@ -138,8 +140,8 @@ io.on("connection", socket => {
   socket.on("start", () => {
     const room = rooms.get(socket.data.room);
     if (!room || room.status !== "waiting" || socket.id !== room.hostId) return;
-    if (room.players.size < 2) {
-      socket.emit("notice", "São necessários pelo menos 2 jogadores para começar.");
+    if (room.players.size < 1) {
+      socket.emit("notice", "Entre na sala antes de começar.");
       return;
     }
     room.status = "playing";

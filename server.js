@@ -14,11 +14,11 @@ const MAX_PLAYERS = 8;
 const LEVELS = [
   { key:[980,280], door:[1770,390], buttons:[[680,480],[1190,480]] },
   { key:[900,250], door:[1780,390], buttons:[[650,480],[1250,480]] },
-  { key:[1550,300], door:[1800,390], buttons:[[300,480]] },
-  { key:[1450,250], door:[1800,390], buttons:[] },
-  { key:[1120,300], door:[1800,390], buttons:[[750,370]] },
+  { key:[1550,300], door:[1800,390], buttons:[[300,480],[1500,480]] },
+  { key:[1450,250], door:[1800,390], buttons:[[180,480],[1550,480]] },
+  { key:[1120,300], door:[1800,390], buttons:[[750,370],[1500,480]] },
   { key:[1600,360], door:[1800,390], buttons:[[950,420],[1300,480]] },
-  { key:[1600,240], door:[1800,390], buttons:[[900,480]] },
+  { key:[1600,240], door:[1800,390], buttons:[[900,480],[1550,480]] },
   { key:[1700,180], door:[1800,390], buttons:[] },
   { key:[1650,300], door:[1800,390], buttons:[[650,430],[1100,430]] },
   { key:[1700,180], door:[1800,390], buttons:[[600,340],[1450,480]] },
@@ -100,24 +100,17 @@ function tryComplete(room, dt) {
     io.to(room.code).emit("notice", "🔑 Chave encontrada! Agora juntem a equipe na saída.");
   }
   let buttonsReady = true;
-  if (players.length > 1) {
-    const occupiedPlayers = new Set();
-    const pressed = new Set();
-    config.buttons.forEach(([x,y], index) => {
-      const player = players.find(p => !occupiedPlayers.has(p.id) && distance(p.x + 15, p.y + 38, x, y) < 58);
-      if (player) {
-        occupiedPlayers.add(player.id);
-        pressed.add(index);
-      }
-    });
-    room.activatedButtons = pressed;
-    buttonsReady = pressed.size === config.buttons.length;
-  } else {
-    config.buttons.forEach(([x,y], index) => {
-      if (players.some(p => distance(p.x + 15, p.y + 38, x, y) < 58)) room.activatedButtons.add(index);
-    });
-    buttonsReady = config.buttons.every((_button, index) => room.activatedButtons.has(index));
-  }
+  const occupiedPlayers = new Set();
+  const pressed = new Set();
+  config.buttons.forEach(([x,y], index) => {
+    const player = players.find(p => !occupiedPlayers.has(p.id) && distance(p.x + 15, p.y + 38, x, y) < 58);
+    if (player) {
+      occupiedPlayers.add(player.id);
+      pressed.add(index);
+    }
+  });
+  room.activatedButtons = pressed;
+  buttonsReady = players.length >= 2 && pressed.size === config.buttons.length;
   const teamReady = players.length >= 1 && players.every(p =>
     distance(p.x + 15, p.y + 19, config.door[0], config.door[1]) < 155
   );
@@ -165,8 +158,8 @@ io.on("connection", socket => {
   socket.on("start", () => {
     const room = rooms.get(socket.data.room);
     if (!room || room.status !== "waiting" || socket.id !== room.hostId) return;
-    if (room.players.size < 1) {
-      socket.emit("notice", "Entre na sala antes de começar.");
+    if (room.players.size < 2) {
+      socket.emit("notice", "São necessários pelo menos 2 jogadores para começar. Chame um amigo!");
       return;
     }
     room.status = "playing";

@@ -20,7 +20,7 @@ const distance = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
 function snapshot(room) {
   return {
     code: room.code, status: room.status, level: room.level,
-    keyFound: room.keyFound, hostId: room.hostId, activatedButtons: [...room.activatedButtons],
+    keyFound: room.keyFound, soloTest: !!room.soloTest, hostId: room.hostId, activatedButtons: [...room.activatedButtons],
     players: [...room.players.values()].map(p => ({
       id:p.id, name:p.name, color:p.color, x:p.x, y:p.y, alive:p.alive
     }))
@@ -89,7 +89,7 @@ function tryComplete(room, dt) {
     }
   });
   room.activatedButtons = pressed;
-  buttonsReady = players.length >= 2 && pressed.size === config.buttons.length;
+  buttonsReady = room.soloTest ? true : players.length >= 2 && pressed.size === config.buttons.length;
   const teamReady = players.length >= 1 && players.every(p =>
     distance(p.x + 15, p.y + 19, config.door[0], config.door[1]) < 155
   );
@@ -113,7 +113,7 @@ io.on("connection", socket => {
     removePlayer(socket);
     let code = makeCode();
     while (rooms.has(code)) code = makeCode();
-    const room = { code, status:"waiting", level:0, keyFound:false, buttonHold:0, activatedButtons:new Set(), hostId:null, players:new Map() };
+    const room = { code, status:"waiting", level:0, keyFound:false, soloTest:false, buttonHold:0, activatedButtons:new Set(), hostId:null, players:new Map() };
     rooms.set(code, room);
     socket.join(code);
     socket.data.room = code;
@@ -134,13 +134,14 @@ io.on("connection", socket => {
     callback?.({ok:true, code});
     sendState(room);
   });
-  socket.on("start", () => {
+  socket.on("start", (data = {}) => {
     const room = rooms.get(socket.data.room);
     if (!room || room.status !== "waiting" || socket.id !== room.hostId) return;
-    if (room.players.size < 2) {
-      socket.emit("notice", "São necessários pelo menos 2 jogadores para começar. Chame um amigo!");
+    if (room.players.size < 2 && data.solo !== true) {
+      socket.emit("notice", "Para jogar em equipe, chame pelo menos mais uma pessoa. Você também pode usar TESTAR SOZINHO.");
       return;
     }
+    room.soloTest = room.players.size === 1 && data.solo === true;
     room.status = "playing";
     beginLevel(room, 0);
   });

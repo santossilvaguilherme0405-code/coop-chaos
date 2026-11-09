@@ -12,7 +12,7 @@ app.get("/health", (_req, res) => res.json({ ok: true, game: "Co-op Chaos" }));
 const rooms = new Map();
 const MAX_PLAYERS = 8;
 const LEVELS = [
-  { key:[790,440], door:[1770,390], buttons:[] },
+  { key:[980,280], door:[1770,390], buttons:[[680,480],[1190,480]] },
   { key:[900,250], door:[1780,390], buttons:[[650,480],[1250,480]] },
   { key:[1550,300], door:[1800,390], buttons:[[300,480]] },
   { key:[1450,250], door:[1800,390], buttons:[] },
@@ -89,10 +89,25 @@ function tryComplete(room, dt) {
     room.keyFound = true;
     io.to(room.code).emit("notice", "🔑 Chave encontrada! Agora juntem a equipe na saída.");
   }
-  config.buttons.forEach(([x,y], index) => {
-    if (players.some(p => distance(p.x + 15, p.y + 38, x, y) < 58)) room.activatedButtons.add(index);
-  });
-  const buttonsReady = config.buttons.every((_button, index) => room.activatedButtons.has(index));
+  let buttonsReady = true;
+  if (players.length > 1) {
+    const occupiedPlayers = new Set();
+    const pressed = new Set();
+    config.buttons.forEach(([x,y], index) => {
+      const player = players.find(p => !occupiedPlayers.has(p.id) && distance(p.x + 15, p.y + 38, x, y) < 58);
+      if (player) {
+        occupiedPlayers.add(player.id);
+        pressed.add(index);
+      }
+    });
+    room.activatedButtons = pressed;
+    buttonsReady = pressed.size === config.buttons.length;
+  } else {
+    config.buttons.forEach(([x,y], index) => {
+      if (players.some(p => distance(p.x + 15, p.y + 38, x, y) < 58)) room.activatedButtons.add(index);
+    });
+    buttonsReady = config.buttons.every((_button, index) => room.activatedButtons.has(index));
+  }
   const teamReady = players.length >= 1 && players.every(p =>
     distance(p.x + 15, p.y + 19, config.door[0], config.door[1]) < 155
   );

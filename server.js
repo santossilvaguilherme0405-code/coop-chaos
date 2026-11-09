@@ -20,7 +20,7 @@ const distance = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
 function snapshot(room) {
   return {
     code: room.code, status: room.status, level: room.level,
-    keyFound: room.keyFound, soloTest: !!room.soloTest, hostId: room.hostId, activatedButtons: [...room.activatedButtons],
+    keyFound: room.keyFound, soloTest: !!room.soloTest, hostId: room.hostId, buttonPositions: room.buttonPositions || [], activatedButtons: [...room.activatedButtons],
     players: [...room.players.values()].map(p => ({
       id:p.id, name:p.name, color:p.color, x:p.x, y:p.y, alive:p.alive
     }))
@@ -59,8 +59,16 @@ function resetPositions(room) {
     index++;
   }
 }
+function buttonStations(room) {
+  const base = LEVELS[room.level].buttons;
+  const needed = room.players.size <= 2 ? 2 : room.players.size <= 4 ? 3 : 4;
+  const seed = room.level;
+  const extra = [[650 + (seed % 4) * 65, 350 + (seed % 3) * 25], [1120 + (seed % 3) * 70, 300 + (seed % 4) * 20]];
+  return [...base, ...extra].slice(0, needed);
+}
 function beginLevel(room, nextLevel) {
   room.level = nextLevel;
+  room.buttonPositions = buttonStations(room);
   room.keyFound = false;
   room.buttonHold = 0;
   room.activatedButtons = new Set();
@@ -76,12 +84,12 @@ function tryComplete(room, dt) {
   const key = config.key;
   if (!room.keyFound && players.some(p => distance(p.x + 15, p.y + 19, key[0], key[1]) < 52)) {
     room.keyFound = true;
-    io.to(room.code).emit("notice", "🔑 Chave encontrada! Agora juntem a equipe na saída.");
+    io.to(room.code).emit("notice", "🔑 Chave coletada!");
   }
   let buttonsReady = true;
   const occupiedPlayers = new Set();
   const pressed = new Set();
-  config.buttons.forEach(([x,y], index) => {
+  (room.buttonPositions || config.buttons).forEach(([x,y], index) => {
     const player = players.find(p => !occupiedPlayers.has(p.id) && distance(p.x + 15, p.y + 38, x, y) < 58);
     if (player) {
       occupiedPlayers.add(player.id);
@@ -89,10 +97,11 @@ function tryComplete(room, dt) {
     }
   });
   room.activatedButtons = pressed;
-  buttonsReady = room.soloTest ? true : players.length >= 2 && pressed.size === config.buttons.length;
+  buttonsReady = !room.soloTest && players.length >= (room.buttonPositions || config.buttons).length && pressed.size === (room.buttonPositions || config.buttons).length;
   const teamReady = players.length >= 1 && players.every(p =>
     distance(p.x + 15, p.y + 19, config.door[0], config.door[1]) < 155
   );
+  if (room.soloTest) return;
   if (room.keyFound && buttonsReady && teamReady) room.buttonHold += dt;
   else room.buttonHold = 0;
 
@@ -138,7 +147,7 @@ io.on("connection", socket => {
     const room = rooms.get(socket.data.room);
     if (!room || room.status !== "waiting" || socket.id !== room.hostId) return;
     if (room.players.size < 2 && data.solo !== true) {
-      socket.emit("notice", "Para jogar em equipe, chame pelo menos mais uma pessoa. Você também pode usar TESTAR SOZINHO.");
+      socket.emit("notice", "Para iniciar a partida cooperativa, chame pelo menos mais uma pessoa. Você pode explorar o mapa sozinho.");
       return;
     }
     room.soloTest = room.players.size === 1 && data.solo === true;
